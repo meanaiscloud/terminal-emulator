@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Universal Terminal Control</title>
+  <link rel="stylesheet" href="https://unpkg.com/xterm/css/xterm.css" />
+  <style>
+    :root {
+      --bg: #0b0b0b;
+      --panel: #141414;
+      --accent: #ff8c00;
+      --text: #f4f4f4;
+      --muted: #c7c7c7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      background: var(--bg);
+      color: var(--text);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+    }
+    header {
+      padding: 1rem 1.5rem;
+      background: linear-gradient(90deg, rgba(255,140,0,0.25), transparent);
+      border-bottom: 1px solid rgba(255,140,0,0.4);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1 { margin: 0; font-size: 1.2rem; letter-spacing: 0.05em; }
+    main {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 1rem;
+      padding: 1rem;
+      overflow: hidden;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid rgba(255,140,0,0.2);
+      border-radius: 12px;
+      padding: 1rem;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+    }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-top: 0.75rem; }
+    input {
+      width: 100%;
+      padding: 0.55rem 0.65rem;
+      margin-top: 0.35rem;
+      background: #0f0f0f;
+      border: 1px solid rgba(255,140,0,0.25);
+      border-radius: 8px;
+      color: var(--text);
+    }
+    .actions { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+    button {
+      background: var(--accent);
+      color: #0b0b0b;
+      padding: 0.6rem 0.9rem;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    button.secondary { background: transparent; color: var(--accent); border: 1px solid rgba(255,140,0,0.4); }
+    button:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(255,140,0,0.3); }
+    #terminal-container { min-height: 480px; }
+    #terminal { height: 55vh; min-height: 420px; border-radius: 10px; overflow: hidden; }
+    .grid-two { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+    .stat {
+      background: #0f0f0f;
+      border-radius: 10px;
+      padding: 0.75rem;
+      border: 1px solid rgba(255,140,0,0.2);
+    }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .files { margin-top: 0.5rem; max-height: 220px; overflow: auto; background: #0f0f0f; border-radius: 8px; border: 1px solid rgba(255,140,0,0.2); }
+    .files pre { margin: 0; padding: 0.75rem; white-space: pre-wrap; font-size: 0.85rem; }
+    textarea { width: 100%; min-height: 90px; background: #0f0f0f; border: 1px solid rgba(255,140,0,0.25); border-radius: 8px; color: var(--text); padding: 0.65rem; }
+    .mini-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.35rem; }
+    .tag { background: rgba(255,140,0,0.2); color: var(--accent); padding: 0.2rem 0.5rem; border-radius: 999px; font-size: 0.75rem; margin-right: 0.35rem; display: inline-block; }
+    .row { display: flex; gap: 0.5rem; align-items: center; }
+    select { width: 100%; padding: 0.55rem 0.65rem; margin-top: 0.35rem; background: #0f0f0f; border: 1px solid rgba(255,140,0,0.25); border-radius: 8px; color: var(--text); }
+    .section-title { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .pill.muted-pill { background: rgba(255,140,0,0.1); border: 1px solid rgba(255,140,0,0.3); color: var(--muted); padding: 0.35rem 0.65rem; }
+    @media (max-width: 1100px) {
+      main { grid-template-columns: 1fr; }
+      #terminal { height: 45vh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>BlackFire Ops Terminal</h1>
+      <div class="muted">Secure SSH, file orchestration, and multi-distro telemetry</div>
+    </div>
+    <div class="pill">Windows 10+ downloads coming soon</div>
+  </header>
+  <main>
+    <section class="card" style="overflow-y:auto; max-height: calc(100vh - 120px);">
+      <div class="section-title">
+        <h2>Connection</h2>
+        <div class="pill muted-pill" id="session-timer">00:00</div>
+      </div>
+      <label>Profile name</label>
+      <input id="profile" placeholder="prod-edge" />
+      <label>Host</label>
+      <input id="host" placeholder="example.com" />
+      <label>Port</label>
+      <input id="port" type="number" value="22" />
+      <label>Username</label>
+      <input id="username" placeholder="root" />
+      <label>Password (optional)</label>
+      <input id="password" type="password" />
+      <label>Identity file on server (optional)</label>
+      <input id="identity" placeholder="/home/user/.ssh/id_rsa" />
+      <label>Saved profiles</label>
+      <select id="profiles"></select>
+      <div class="actions">
+        <button id="connect">Create session</button>
+        <button class="secondary" id="disconnect">Disconnect</button>
+      </div>
+      <div class="actions">
+        <button class="secondary" id="save-profile">Save profile</button>
+        <button class="secondary" id="load-profile">Load profile</button>
+      </div>
+      <div class="row">
+        <label class="row" style="margin-top:0.75rem;"><input type="checkbox" id="autoreconnect" />&nbsp;Auto-reconnect</label>
+        <label class="row" style="margin-top:0.75rem;"><input type="checkbox" id="keepalive" />&nbsp;Keep-alive ping</label>
+      </div>
+      <div class="muted" id="session-status">No session</div>
+
+      <h2 style="margin-top:1.5rem;">System Dashboard</h2>
+      <div class="grid-two">
+        <div class="stat">
+          <div class="muted">CPU Load</div>
+          <div id="cpu">--</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Memory</div>
+          <div id="memory">--</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Storage</div>
+          <div id="storage">--</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Last refresh</div>
+          <div id="updated">--</div>
+        </div>
+      </div>
+      <div class="grid-two">
+        <button id="refresh">Refresh metrics</button>
+        <button class="secondary" id="toggle-auto-metrics">Auto metrics</button>
+      </div>
+      <div class="grid-two" style="margin-top:0.5rem;">
+        <button class="secondary" id="ping">Latency ping</button>
+        <button class="secondary" id="fetch-info">Host facts</button>
+      </div>
+      <div class="mini-grid" style="margin-top:0.5rem;">
+        <div class="stat">
+          <div class="muted">Distro</div>
+          <div id="distro">--</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Kernel</div>
+          <div id="kernel">--</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Uptime</div>
+          <div id="uptime">--</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Users/IP</div>
+          <div id="users">--</div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:1.2rem;">SFTP File Manager</h2>
+      <label>Directory</label>
+      <input id="path" value="." />
+      <div class="actions">
+        <button id="list">List</button>
+        <button class="secondary" id="tree">Depth scan</button>
+      </div>
+      <div class="files"><pre id="listing">No data</pre></div>
+      <label>Quick preview path</label>
+      <input id="preview-path" placeholder="/etc/os-release" />
+      <div class="actions">
+        <button id="preview">Preview file</button>
+      </div>
+      <div class="files"><pre id="preview-output">--</pre></div>
+      <label>Tail log path</label>
+      <input id="tail-path" placeholder="/var/log/syslog" />
+      <div class="actions">
+        <button id="tail">Tail 100 lines</button>
+      </div>
+      <div class="files"><pre id="tail-output">--</pre></div>
+      <label>Upload file</label>
+      <input type="file" id="upload" />
+      <label>Target path</label>
+      <input id="upload-target" placeholder="/remote/path/file.txt" />
+      <div class="actions">
+        <button id="send">Upload</button>
+      </div>
+      <label>Download path</label>
+      <input id="download-path" placeholder="/remote/path/file.txt" />
+      <div class="actions">
+        <button id="download">Download</button>
+      </div>
+    </section>
+
+    <section class="card" id="terminal-container">
+      <div class="section-title">
+        <h2>Terminal & automations</h2>
+        <div>
+          <button class="secondary" id="start-record">Start record</button>
+          <button class="secondary" id="stop-record">Stop</button>
+          <button class="secondary" id="download-record">Download log</button>
+        </div>
+      </div>
+      <div id="terminal"></div>
+      <div class="grid-two" style="margin-top:0.75rem;">
+        <div class="card" style="padding:0.75rem; background:#0f0f0f;">
+          <div class="section-title"><div>Quick commands</div><div class="tag">push-button ops</div></div>
+          <div class="mini-grid" style="margin-top:0.35rem;">
+            <button class="secondary quick" data-command="uptime">Uptime</button>
+            <button class="secondary quick" data-command="df -h">df -h</button>
+            <button class="secondary quick" data-command="free -m">free -m</button>
+            <button class="secondary quick" data-command="journalctl -n 50 --no-pager">Tail journal</button>
+          </div>
+          <label style="margin-top:0.5rem;">Custom run</label>
+          <textarea id="custom-command" placeholder="sudo systemctl status ssh"></textarea>
+          <div class="actions">
+            <button id="run-command">Execute</button>
+          </div>
+          <div class="files"><pre id="command-output">--</pre></div>
+        </div>
+        <div class="card" style="padding:0.75rem; background:#0f0f0f;">
+          <div class="section-title"><div>Health watchers</div><div class="tag">insight</div></div>
+          <div class="mini-grid" style="margin-top:0.35rem;">
+            <button class="secondary" id="processes">Top processes</button>
+            <button class="secondary" id="ports">Ports</button>
+          </div>
+          <div class="files"><pre id="process-output">--</pre></div>
+          <div class="files"><pre id="ports-output">--</pre></div>
+          <div class="files"><pre id="audit-log">Audit log ready</pre></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="https://unpkg.com/xterm/lib/xterm.js"></script>
+  <script>
+    const term = new Terminal({
+      theme: {
+        background: '#0b0b0b',
+        foreground: '#f4f4f4',
+        cursor: '#ff8c00',
+        black: '#000000',
+        brightBlack: '#2a2a2a',
+        red: '#ff5722',
+        brightRed: '#ff8c00'
+      }
+    });
+    term.open(document.getElementById('terminal'));
+
+    let sessionId = null;
+    let socket = null;
+    let autoMetrics = null;
+    let keepAliveTimer = null;
+    let sessionStart = null;
+    let recorder = [];
+
+    const status = msg => document.getElementById('session-status').innerText = msg;
+    const audit = msg => {
+      const log = document.getElementById('audit-log');
+      const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      log.innerText = `${line}\n${log.innerText}`.slice(0, 5000);
+    };
+
+    function updateProfiles() {
+      const select = document.getElementById('profiles');
+      const items = JSON.parse(localStorage.getItem('profiles') || '[]');
+      select.innerHTML = '';
+      items.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify(p);
+        opt.textContent = `${p.name} • ${p.host}`;
+        select.appendChild(opt);
+      });
+    }
+
+    function saveProfile() {
+      const profile = {
+        name: document.getElementById('profile').value || 'default',
+        host: document.getElementById('host').value,
+        port: document.getElementById('port').value,
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+        identityFile: document.getElementById('identity').value,
+      };
+      const items = JSON.parse(localStorage.getItem('profiles') || '[]').filter(p => p.name !== profile.name);
+      items.push(profile);
+      localStorage.setItem('profiles', JSON.stringify(items));
+      updateProfiles();
+      audit(`Saved profile ${profile.name}`);
+    }
+
+    function loadProfile() {
+      const raw = document.getElementById('profiles').value;
+      if (!raw) return;
+      const profile = JSON.parse(raw);
+      document.getElementById('profile').value = profile.name;
+      document.getElementById('host').value = profile.host;
+      document.getElementById('port').value = profile.port;
+      document.getElementById('username').value = profile.username;
+      document.getElementById('password').value = profile.password;
+      document.getElementById('identity').value = profile.identityFile;
+      audit(`Loaded profile ${profile.name}`);
+    }
+
+    async function createSession() {
+      const payload = {
+        host: document.getElementById('host').value,
+        port: document.getElementById('port').value,
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+        identityFile: document.getElementById('identity').value
+      };
+      const res = await fetch('/api/session', { method: 'POST', body: JSON.stringify(payload) });
+      const body = await res.json();
+      if (body.sessionId) {
+        sessionId = body.sessionId;
+        status(`Session ${sessionId}`);
+        sessionStart = Date.now();
+        bootstrapTerminal();
+        audit(`Session opened for ${payload.host}`);
+      } else {
+        term.writeln(`Failed: ${body.error}`);
+      }
+    }
+
+    function bootstrapTerminal() {
+      socket = new WebSocket(`ws://${location.host}/terminal`);
+      socket.onopen = () => {
+        socket.send(`SESSION ${sessionId}`);
+        term.focus();
+      };
+      socket.onmessage = evt => {
+        term.write(evt.data);
+        if (recorder) recorder.push(`[rx ${new Date().toISOString()}] ${evt.data}`);
+      };
+      socket.onclose = () => {
+        term.writeln('\r\n[disconnected]');
+        if (document.getElementById('autoreconnect').checked) {
+          setTimeout(createSession, 1000);
+        }
+      };
+      term.onData(data => {
+        if (recorder) recorder.push(`[tx ${new Date().toISOString()}] ${data}`);
+        socket?.readyState === 1 && socket.send(data);
+      });
+    }
+
+    function updateTimer() {
+      if (!sessionStart) return;
+      const diff = Math.floor((Date.now() - sessionStart) / 1000);
+      const m = String(Math.floor(diff / 60)).padStart(2, '0');
+      const s = String(diff % 60).padStart(2, '0');
+      document.getElementById('session-timer').innerText = `${m}:${s}`;
+    }
+    setInterval(updateTimer, 1000);
+
+    async function fetchMetrics() {
+      if (!sessionId) return;
+      const res = await fetch(`/api/session/${sessionId}/metrics`);
+      const body = await res.json();
+      if (body.error) { term.writeln(body.error); return; }
+      const parsed = JSON.parse(body.raw || '{}');
+      document.getElementById('cpu').innerText = `1m ${parsed.cpu?.load1 || '?'} | 5m ${parsed.cpu?.load5 || '?'} | 15m ${parsed.cpu?.load15 || '?'}`;
+      document.getElementById('memory').innerText = `${Math.round((parsed.memory?.used || 0)/1e6)}MB used of ${Math.round((parsed.memory?.total || 0)/1e6)}MB`;
+      const disks = (parsed.storage || []).map(d => `${d.mount}: ${Math.round(d.used/1e9)}GB/${Math.round(d.size/1e9)}GB`).join(' | ');
+      document.getElementById('storage').innerText = disks || '--';
+      document.getElementById('updated').innerText = new Date().toLocaleTimeString();
+      audit('Metrics refreshed');
+    }
+
+    async function fetchInfo() {
+      if (!sessionId) return;
+      const res = await fetch(`/api/session/${sessionId}/info`);
+      const body = await res.json();
+      const parsed = JSON.parse(body.raw || '{}');
+      document.getElementById('distro').innerText = parsed.distro || '--';
+      document.getElementById('kernel').innerText = parsed.kernel || '--';
+      document.getElementById('uptime').innerText = `${Math.round((parsed.uptimeSeconds||0)/3600)}h`;
+      document.getElementById('users').innerText = `${parsed.users || 0} users @ ${parsed.ip || '--'}`;
+      audit('Host facts refreshed');
+    }
+
+    async function latencyPing() {
+      if (!sessionId) return;
+      const start = performance.now();
+      const res = await fetch(`/api/session/${sessionId}/ping`);
+      const body = await res.json();
+      const end = performance.now();
+      document.getElementById('updated').innerText = `${Math.round(end - start)} ms latency`;
+      audit(`Latency ${Math.round(end - start)}ms (${body.output?.trim() || ''})`);
+    }
+
+    async function listFiles() {
+      if (!sessionId) return;
+      const path = document.getElementById('path').value;
+      const res = await fetch(`/api/session/${sessionId}/list?path=${encodeURIComponent(path)}`);
+      const body = await res.json();
+      document.getElementById('listing').innerText = body.output || body.error || 'No data';
+      audit(`Listed ${path}`);
+    }
+
+    async function treeScan() {
+      if (!sessionId) return;
+      const path = document.getElementById('path').value;
+      const res = await fetch(`/api/session/${sessionId}/tree?path=${encodeURIComponent(path)}&depth=3`);
+      const body = await res.json();
+      document.getElementById('listing').innerText = body.output || body.error;
+      audit(`Scanned tree ${path}`);
+    }
+
+    async function previewFile() {
+      if (!sessionId) return;
+      const path = document.getElementById('preview-path').value;
+      const res = await fetch(`/api/session/${sessionId}/download`, { method: 'POST', body: JSON.stringify({ path }) });
+      const body = await res.json();
+      if (body.base64) {
+        const text = atob(body.base64);
+        document.getElementById('preview-output').innerText = text;
+        audit(`Previewed ${path}`);
+      }
+    }
+
+    async function tailLog() {
+      if (!sessionId) return;
+      const path = document.getElementById('tail-path').value;
+      const res = await fetch(`/api/session/${sessionId}/tail`, { method: 'POST', body: JSON.stringify({ path, lines: 100 }) });
+      const body = await res.json();
+      document.getElementById('tail-output').innerText = body.output || body.error;
+      audit(`Tailed ${path}`);
+    }
+
+    async function upload() {
+      if (!sessionId) return;
+      const file = document.getElementById('upload').files[0];
+      if (!file) { term.writeln('Choose a file to upload'); return; }
+      const target = document.getElementById('upload-target').value;
+      const base64 = await file.arrayBuffer().then(buf => btoa(String.fromCharCode(...new Uint8Array(buf))));
+      const res = await fetch(`/api/session/${sessionId}/upload`, { method: 'POST', body: JSON.stringify({ path: target, base64 }) });
+      const body = await res.json();
+      if (body.ok) { term.writeln('Upload complete'); audit(`Uploaded to ${target}`); } else term.writeln(body.error);
+    }
+
+    async function download() {
+      if (!sessionId) return;
+      const path = document.getElementById('download-path').value;
+      const res = await fetch(`/api/session/${sessionId}/download`, { method: 'POST', body: JSON.stringify({ path }) });
+      const body = await res.json();
+      if (body.base64) {
+        const blob = new Blob([Uint8Array.from(atob(body.base64), c => c.charCodeAt(0))]);
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = path.split('/').pop() || 'download.bin';
+        link.click();
+        audit(`Downloaded ${path}`);
+      } else {
+        term.writeln(body.error || 'Download failed');
+      }
+    }
+
+    async function runCommand(cmd) {
+      if (!sessionId) return;
+      const res = await fetch(`/api/session/${sessionId}/run`, { method: 'POST', body: JSON.stringify({ command: cmd }) });
+      const body = await res.json();
+      document.getElementById('command-output').innerText = body.output || body.error;
+      audit(`Ran command: ${cmd}`);
+    }
+
+    async function showProcesses() {
+      if (!sessionId) return;
+      const res = await fetch(`/api/session/${sessionId}/processes`);
+      const body = await res.json();
+      document.getElementById('process-output').innerText = body.output || body.error;
+      audit('Fetched processes');
+    }
+
+    async function showPorts() {
+      if (!sessionId) return;
+      const res = await fetch(`/api/session/${sessionId}/ports`);
+      const body = await res.json();
+      document.getElementById('ports-output').innerText = body.output || body.error;
+      audit('Fetched ports');
+    }
+
+    function toggleAutoMetrics() {
+      if (autoMetrics) {
+        clearInterval(autoMetrics);
+        autoMetrics = null;
+        audit('Auto metrics stopped');
+      } else {
+        fetchMetrics();
+        autoMetrics = setInterval(fetchMetrics, 5000);
+        audit('Auto metrics started');
+      }
+    }
+
+    function toggleKeepAlive() {
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+        return;
+      }
+      keepAliveTimer = setInterval(() => {
+        if (document.getElementById('keepalive').checked) latencyPing();
+      }, 15000);
+    }
+
+    function startRecord() { recorder = []; audit('Recording started'); }
+    function stopRecord() { audit('Recording stopped'); }
+    function downloadRecord() {
+      const blob = new Blob([recorder.join('\n')], { type: 'text/plain' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `session-${new Date().toISOString()}.log`;
+      link.click();
+      audit('Recording downloaded');
+    }
+
+    document.getElementById('connect').onclick = createSession;
+    document.getElementById('disconnect').onclick = () => { sessionId = null; socket?.close(); status('No session'); audit('Session closed'); };
+    document.getElementById('refresh').onclick = fetchMetrics;
+    document.getElementById('list').onclick = listFiles;
+    document.getElementById('send').onclick = upload;
+    document.getElementById('download').onclick = download;
+    document.getElementById('toggle-auto-metrics').onclick = toggleAutoMetrics;
+    document.getElementById('keepalive').onchange = toggleKeepAlive;
+    document.getElementById('ping').onclick = latencyPing;
+    document.getElementById('tree').onclick = treeScan;
+    document.getElementById('preview').onclick = previewFile;
+    document.getElementById('tail').onclick = tailLog;
+    document.getElementById('fetch-info').onclick = fetchInfo;
+    document.getElementById('run-command').onclick = () => runCommand(document.getElementById('custom-command').value);
+    document.querySelectorAll('.quick').forEach(btn => btn.onclick = () => runCommand(btn.dataset.command));
+    document.getElementById('processes').onclick = showProcesses;
+    document.getElementById('ports').onclick = showPorts;
+    document.getElementById('save-profile').onclick = saveProfile;
+    document.getElementById('load-profile').onclick = loadProfile;
+    document.getElementById('start-record').onclick = startRecord;
+    document.getElementById('stop-record').onclick = stopRecord;
+    document.getElementById('download-record').onclick = downloadRecord;
+
+    updateProfiles();
+  </script>
+</body>
+</html>
