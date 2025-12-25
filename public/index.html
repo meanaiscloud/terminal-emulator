@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Universal Terminal Control</title>
+  <link rel="stylesheet" href="https://unpkg.com/xterm/css/xterm.css" />
+  <style>
+    :root {
+      --bg: #0b0b0b;
+      --panel: #141414;
+      --accent: #ff8c00;
+      --text: #f4f4f4;
+      --muted: #c7c7c7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      background: var(--bg);
+      color: var(--text);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+    }
+    header {
+      padding: 1rem 1.5rem;
+      background: linear-gradient(90deg, rgba(255,140,0,0.25), transparent);
+      border-bottom: 1px solid rgba(255,140,0,0.4);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1 { margin: 0; font-size: 1.2rem; letter-spacing: 0.05em; }
+    main {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1rem;
+      padding: 1rem;
+      overflow: hidden;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid rgba(255,140,0,0.2);
+      border-radius: 12px;
+      padding: 1rem;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+    }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-top: 0.75rem; }
+    input {
+      width: 100%;
+      padding: 0.55rem 0.65rem;
+      margin-top: 0.35rem;
+      background: #0f0f0f;
+      border: 1px solid rgba(255,140,0,0.25);
+      border-radius: 8px;
+      color: var(--text);
+    }
+    .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    button {
+      background: var(--accent);
+      color: #0b0b0b;
+      padding: 0.6rem 0.9rem;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    button.secondary { background: transparent; color: var(--accent); border: 1px solid rgba(255,140,0,0.4); }
+    button:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(255,140,0,0.3); }
+    #terminal-container { height: 55vh; min-height: 420px; }
+    #terminal { height: 100%; border-radius: 10px; overflow: hidden; }
+    .grid-two { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+    .stat {
+      background: #0f0f0f;
+      border-radius: 10px;
+      padding: 0.75rem;
+      border: 1px solid rgba(255,140,0,0.2);
+    }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .files { margin-top: 0.5rem; max-height: 220px; overflow: auto; background: #0f0f0f; border-radius: 8px; border: 1px solid rgba(255,140,0,0.2); }
+    .files pre { margin: 0; padding: 0.75rem; white-space: pre-wrap; font-size: 0.85rem; }
+    .pill { padding: 0.2rem 0.45rem; border-radius: 999px; background: rgba(255,140,0,0.2); color: var(--accent); font-size: 0.7rem; }
+    @media (max-width: 1100px) {
+      main { grid-template-columns: 1fr; }
+      #terminal-container { height: 45vh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>BlackFire Ops Terminal</h1>
+      <div class="muted">Secure SSH, file orchestration, and multi-distro telemetry</div>
+    </div>
+    <div class="pill">Windows 10+ downloads coming soon</div>
+  </header>
+  <main>
+    <section class="card" style="overflow-y:auto; max-height: calc(100vh - 120px);">
+      <h2>Connection</h2>
+      <label>Host</label>
+      <input id="host" placeholder="example.com" />
+      <label>Port</label>
+      <input id="port" type="number" value="22" />
+      <label>Username</label>
+      <input id="username" placeholder="root" />
+      <label>Password (optional)</label>
+      <input id="password" type="password" />
+      <label>Identity file on server (optional)</label>
+      <input id="identity" placeholder="/home/user/.ssh/id_rsa" />
+      <div class="actions">
+        <button id="connect">Create session</button>
+        <button class="secondary" id="disconnect">Disconnect</button>
+      </div>
+      <div class="muted" id="session-status">No session</div>
+
+      <h2 style="margin-top:1.5rem;">System Dashboard</h2>
+      <div class="grid-two">
+        <div class="stat">
+          <div class="muted">CPU Load</div>
+          <div id="cpu">--</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Memory</div>
+          <div id="memory">--</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Storage</div>
+          <div id="storage">--</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Last refresh</div>
+          <div id="updated">--</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="refresh">Refresh metrics</button>
+      </div>
+
+      <h2 style="margin-top:1.5rem;">SFTP File Manager</h2>
+      <label>Directory</label>
+      <input id="path" value="." />
+      <div class="actions">
+        <button id="list">List</button>
+      </div>
+      <div class="files"><pre id="listing">No data</pre></div>
+      <label>Upload file</label>
+      <input type="file" id="upload" />
+      <label>Target path</label>
+      <input id="upload-target" placeholder="/remote/path/file.txt" />
+      <div class="actions">
+        <button id="send">Upload</button>
+      </div>
+      <label>Download path</label>
+      <input id="download-path" placeholder="/remote/path/file.txt" />
+      <div class="actions">
+        <button id="download">Download</button>
+      </div>
+    </section>
+
+    <section class="card" id="terminal-container">
+      <div id="terminal"></div>
+    </section>
+  </main>
+  <script src="https://unpkg.com/xterm/lib/xterm.js"></script>
+  <script>
+    const term = new Terminal({
+      theme: {
+        background: '#0b0b0b',
+        foreground: '#f4f4f4',
+        cursor: '#ff8c00',
+        black: '#000000',
+        brightBlack: '#2a2a2a',
+        red: '#ff5722',
+        brightRed: '#ff8c00'
+      }
+    });
+    term.open(document.getElementById('terminal'));
+
+    let sessionId = null;
+    let socket = null;
+
+    const status = msg => document.getElementById('session-status').innerText = msg;
+
+    async function createSession() {
+      const payload = {
+        host: document.getElementById('host').value,
+        port: document.getElementById('port').value,
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+        identityFile: document.getElementById('identity').value
+      };
+      const res = await fetch('/api/session', { method: 'POST', body: JSON.stringify(payload) });
+      const body = await res.json();
+      if (body.sessionId) {
+        sessionId = body.sessionId;
+        status(`Session ${sessionId}`);
+        bootstrapTerminal();
+      } else {
+        term.writeln(`Failed: ${body.error}`);
+      }
+    }
+
+    function bootstrapTerminal() {
+      socket = new WebSocket(`ws://${location.host}/terminal`);
+      socket.onopen = () => {
+        socket.send(`SESSION ${sessionId}`);
+        term.focus();
+      };
+      socket.onmessage = evt => term.write(evt.data);
+      socket.onclose = () => term.writeln('\r\n[disconnected]');
+      term.onData(data => socket?.readyState === 1 && socket.send(data));
+    }
+
+    async function fetchMetrics() {
+      if (!sessionId) return;
+      const res = await fetch(`/api/session/${sessionId}/metrics`);
+      const body = await res.json();
+      if (body.error) { term.writeln(body.error); return; }
+      const parsed = JSON.parse(body.raw || '{}');
+      document.getElementById('cpu').innerText = `1m ${parsed.cpu?.load1 || '?'} | 5m ${parsed.cpu?.load5 || '?'} | 15m ${parsed.cpu?.load15 || '?'}`;
+      document.getElementById('memory').innerText = `${Math.round((parsed.memory?.used || 0)/1e6)}MB used of ${Math.round((parsed.memory?.total || 0)/1e6)}MB`;
+      const disks = (parsed.storage || []).map(d => `${d.mount}: ${Math.round(d.used/1e9)}GB/${Math.round(d.size/1e9)}GB`).join(' | ');
+      document.getElementById('storage').innerText = disks || '--';
+      document.getElementById('updated').innerText = new Date().toLocaleTimeString();
+    }
+
+    async function listFiles() {
+      if (!sessionId) return;
+      const path = document.getElementById('path').value;
+      const res = await fetch(`/api/session/${sessionId}/list?path=${encodeURIComponent(path)}`);
+      const body = await res.json();
+      document.getElementById('listing').innerText = body.output || body.error || 'No data';
+    }
+
+    async function upload() {
+      if (!sessionId) return;
+      const file = document.getElementById('upload').files[0];
+      if (!file) { term.writeln('Choose a file to upload'); return; }
+      const target = document.getElementById('upload-target').value;
+      const base64 = await file.arrayBuffer().then(buf => btoa(String.fromCharCode(...new Uint8Array(buf))));
+      const res = await fetch(`/api/session/${sessionId}/upload`, { method: 'POST', body: JSON.stringify({ path: target, base64 }) });
+      const body = await res.json();
+      if (body.ok) term.writeln('Upload complete'); else term.writeln(body.error);
+    }
+
+    async function download() {
+      if (!sessionId) return;
+      const path = document.getElementById('download-path').value;
+      const res = await fetch(`/api/session/${sessionId}/download`, { method: 'POST', body: JSON.stringify({ path }) });
+      const body = await res.json();
+      if (body.base64) {
+        const blob = new Blob([Uint8Array.from(atob(body.base64), c => c.charCodeAt(0))]);
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = path.split('/').pop() || 'download.bin';
+        link.click();
+      } else {
+        term.writeln(body.error || 'Download failed');
+      }
+    }
+
+    document.getElementById('connect').onclick = createSession;
+    document.getElementById('disconnect').onclick = () => { sessionId = null; socket?.close(); status('No session'); };
+    document.getElementById('refresh').onclick = fetchMetrics;
+    document.getElementById('list').onclick = listFiles;
+    document.getElementById('send').onclick = upload;
+    document.getElementById('download').onclick = download;
+  </script>
+</body>
+</html>
